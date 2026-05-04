@@ -38,6 +38,17 @@ app.add_middleware(
 pipeline_service = PipelineService()
 
 
+@app.get("/")
+async def root():
+    """Root endpoint with welcome message."""
+    return {
+        "message": "Welcome to the Rice AI System API",
+        "docs": "/docs",
+        "health": "/api/health",
+        "status": "online"
+    }
+
+
 @app.on_event("startup")
 async def startup_event():
     """Startup events (models will be lazy-loaded on first request)."""
