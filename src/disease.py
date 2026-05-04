@@ -1,7 +1,6 @@
 """Disease detection service — loads and runs the disease classification model."""
 
 import numpy as np
-import tensorflow as tf
 from utils.config import config
 from utils.image import resize_for_classification
 
@@ -82,6 +81,7 @@ class DiseaseService:
 
     def load_model(self) -> None:
         """Load the disease classification model from disk."""
+        import tensorflow as tf
         print(f"[*] Loading disease model from {config.DISEASE_MODEL_PATH}...")
         self.model = tf.keras.models.load_model(config.DISEASE_MODEL_PATH, compile=False)
         print(f"    [OK] Disease model loaded. Input shape: {self.model.input_shape}")

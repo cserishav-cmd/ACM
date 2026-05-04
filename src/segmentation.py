@@ -1,7 +1,6 @@
 """Segmentation service — loads and runs the segmentation model."""
 
 import numpy as np
-import tensorflow as tf
 from utils.config import config
 from utils.image import resize_for_segmentation, colorize_mask, mask_to_base64
 
@@ -60,6 +59,7 @@ class SegmentationService:
 
     def load_model(self) -> None:
         """Load the segmentation model from disk."""
+        import tensorflow as tf
         print(f"[*] Loading segmentation model from {config.SEG_MODEL_PATH}...")
         self.model = tf.keras.models.load_model(config.SEG_MODEL_PATH, compile=False)
         print(f"    [OK] Segmentation model loaded. Input shape: {self.model.input_shape}")

@@ -1,7 +1,6 @@
 """Variety classification service — loads and runs the variety model."""
 
 import numpy as np
-import tensorflow as tf
 from utils.config import config
 from utils.image import resize_for_classification
 
@@ -77,6 +76,7 @@ class VarietyService:
 
     def load_model(self) -> None:
         """Load the variety classification model from disk."""
+        import tensorflow as tf
         print(f"[*] Loading variety model from {config.VARIETY_MODEL_PATH}...")
         self.model = tf.keras.models.load_model(config.VARIETY_MODEL_PATH, compile=False)
         print(f"    [OK] Variety model loaded. Input shape: {self.model.input_shape}")
