@@ -21,6 +21,7 @@ app = FastAPI(
 
 frontend_origins = [
     os.getenv("FRONTEND_URL", "http://localhost:5173"),
+    "https://rice-ai-ui.onrender.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
