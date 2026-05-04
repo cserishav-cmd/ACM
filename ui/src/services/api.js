@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "https://acm-i365.onrender.com/
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 60000, // 60s — model inference can be slow
+  timeout: 120000, // 120s — model inference and cold starts can be slow
 });
 
 /**
