@@ -31,7 +31,7 @@ def validate_image(filename: str, image_bytes: bytes) -> None:
 
 
 def preprocess_upload(image_bytes: bytes) -> np.ndarray:
-    """Convert uploaded bytes to a normalized numpy array.
+    """Convert uploaded bytes to a normalized numpy array with memory-safe resizing.
 
     Args:
         image_bytes: Raw image bytes.
@@ -40,6 +40,13 @@ def preprocess_upload(image_bytes: bytes) -> np.ndarray:
         Numpy array of shape (H, W, 3) with values in [0, 1].
     """
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    
+    # Memory safety: If image is very large, downscale it immediately before normalization
+    # Normalizing a 4K image to float32 consumes ~100MB RAM.
+    max_dim = 1024
+    if max(image.size) > max_dim:
+        image.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        
     return np.array(image, dtype=np.float32) / 255.0
 
 

@@ -36,14 +36,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    return response
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
@@ -73,10 +65,18 @@ async def root():
 
 @app.on_event("startup")
 async def startup_event():
-    """Startup events (models will be lazy-loaded on first request)."""
+    """Startup events (load models into memory)."""
     # Initialize ChatbotService singleton
     chatbot = ChatbotService()
-    print("[OK] Backend services initialized. Models will be lazy-loaded.")
+    
+    # Pre-load models to avoid timeouts during first request
+    try:
+        pipeline_service.load_models()
+        print("[OK] All models loaded into memory.")
+    except Exception as e:
+        print(f"[Error] Failed to load models on startup: {e}")
+        
+    print("[OK] Backend services initialized.")
 
 
 @app.get("/api/health")
