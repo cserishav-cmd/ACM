@@ -5,6 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
+# Limit TensorFlow memory usage for Render Free Tier (512MB RAM)
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3" 
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 from api.routes.predict import router as predict_router
 from api.routes.weather import router as weather_router
 from api.routes.chat import router as chat_router
