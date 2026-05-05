@@ -62,35 +62,40 @@ class ChatbotService:
             return None
 
     def _get_historical_context(self) -> str:
-        """Extract average yield and weather info, cached for performance."""
+        """Extract average yield and weather info from df.pkl, cached for performance."""
         if self._historical_context_cache:
             return self._historical_context_cache
 
-        data = self._load_wb_data()
-        if not data:
+        df_path = "models/df.pkl"
+        if not os.path.exists(df_path):
             return "No historical data available."
             
-        context_lines = []
-        
-        # Optimized loading: Only use necessary columns/stats
-        yield_df = data.get("rice_yield")
-        if yield_df is not None and not yield_df.empty:
-            stats = yield_df.agg({
-                "Yield_kg_per_ha": "mean",
-                "N_req_kg_per_ha": "mean",
-                "P_req_kg_per_ha": "mean",
-                "K_req_kg_per_ha": "mean"
-            })
-            context_lines.append(f"- Avg WB Yield: {stats['Yield_kg_per_ha']:.1f} kg/ha")
-            context_lines.append(f"- Avg N-P-K: {stats['N_req_kg_per_ha']:.0f}-{stats['P_req_kg_per_ha']:.0f}-{stats['K_req_kg_per_ha']:.0f} kg/ha")
+        try:
+            df = pd.read_pickle(df_path)
+            context_lines = []
             
-        weather_df = data.get("weather")
-        if weather_df is not None and not weather_df.empty:
-            stats = weather_df.agg({"Temperature": "mean", "Rainfall": "mean"})
-            context_lines.append(f"- Hist. Weather: {stats['Temperature']:.1f}°C, {stats['Rainfall']:.1f}mm Rain")
+            if 'yield_kg_per_ha' in df.columns:
+                avg_yield = df['yield_kg_per_ha'].mean()
+                context_lines.append(f"- Avg Historical Yield: {avg_yield:.1f} kg/ha")
+            if 'temp_mean_annual' in df.columns and 'rainfall_annual_mm' in df.columns:
+                avg_temp = df['temp_mean_annual'].mean()
+                avg_rain = df['rainfall_annual_mm'].mean()
+                context_lines.append(f"- Hist. Weather: {avg_temp:.1f}°C, {avg_rain:.1f}mm Rain/Year")
+                
+            extreme_events = []
+            if 'is_drought' in df.columns and df['is_drought'].sum() > 0:
+                extreme_events.append("Historical Droughts recorded.")
+            if 'is_flood' in df.columns and df['is_flood'].sum() > 0:
+                extreme_events.append("Historical Floods recorded (Cyclone/Heavy Rain risks).")
             
-        self._historical_context_cache = "\n".join(context_lines)
-        return self._historical_context_cache
+            if extreme_events:
+                context_lines.append(f"- Extreme Events: {' '.join(extreme_events)}")
+                
+            self._historical_context_cache = "\n".join(context_lines)
+            return self._historical_context_cache
+        except Exception as e:
+            print(f"Error reading df.pkl context: {e}")
+            return "Error loading historical data."
 
     def _format_pipeline_results(self, pipeline_results: dict) -> str:
         if not pipeline_results: return "No real-time data."
@@ -116,11 +121,33 @@ class ChatbotService:
         historical = self._get_historical_context()
         realtime = self._format_pipeline_results(pipeline_results)
         
-        # Load template lazily
+        # Try to load custom prompt if exists, else use strict fallback
         prompt_data = self._load_prompt_data()
-        template = prompt_data.get("system_prompt", "") if prompt_data else "You are an AI Agriculture Assistant for West Bengal."
         
-        return template.format(context=historical, pipeline_context=realtime)
+        DEFAULT_PROMPT = """You are a highly specialized AI Agriculture Assistant for West Bengal, focusing strictly on Rice (Paddy) cultivation, crop health, and weather-agrochemical interactions.
+
+CRITICAL INSTRUCTIONS:
+1. STRICT CONTEXT BOUNDARY: You must NEVER answer questions outside the scope of agriculture, crop science, weather patterns, and the provided data. If a user asks an out-of-context question (e.g., programming, politics, or unrelated topics), politely decline and state you only answer agriculture-related queries.
+2. USE PROVIDED DATA: Base your answers heavily on the provided Historical Context and Real-Time Pipeline Results. Provide probable insights from the PKL data when queried.
+3. WEATHER & CYCLONES: Always factor in real-time or historical extreme weather (cyclones, floods, droughts, high winds) if relevant. Emphasize how these events impact crop yield, pesticide drift, and fertilizer leaching. Do not invent weather data outside of what is logically probable for the region.
+
+---
+HISTORICAL DATA CONTEXT (From PKL):
+{context}
+
+REAL-TIME PIPELINE RESULTS:
+{pipeline_context}
+---
+
+Provide clear, concise, and scientifically accurate agronomic recommendations based ONLY on the data above and your agricultural expertise."""
+
+        template = prompt_data.get("system_prompt", "") if prompt_data else DEFAULT_PROMPT
+        
+        # Ensure fallback if template string formatting fails
+        try:
+            return template.format(context=historical, pipeline_context=realtime)
+        except Exception:
+            return DEFAULT_PROMPT.format(context=historical, pipeline_context=realtime)
 
     async def generate_initial_insight(self, pipeline_results: dict) -> str:
         """Generates contextual insight, using cache if identical results provided."""
