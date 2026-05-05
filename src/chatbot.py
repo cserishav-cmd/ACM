@@ -97,6 +97,39 @@ class ChatbotService:
             print(f"Error reading df.pkl context: {e}")
             return "Error loading historical data."
 
+    def _get_knowledge_base_context(self, query: str = "") -> str:
+        """Fetch relevant chunks from the knowledge base using simple keyword matching."""
+        kb_path = "models/knowledge_base_chunks.pkl"
+        if not os.path.exists(kb_path):
+            return ""
+            
+        try:
+            with open(kb_path, "rb") as f:
+                chunks = pickle.load(f)
+            
+            if not query:
+                selected = chunks[:2]
+                return "\n---\n".join([getattr(c, 'page_content', str(c)) for c in selected])
+                
+            # Clean and split query
+            import re
+            query_words = set(re.findall(r'\w+', query.lower()))
+            
+            scored_chunks = []
+            for c in chunks:
+                text = getattr(c, 'page_content', str(c))
+                text_words = set(re.findall(r'\w+', text.lower()))
+                score = len(query_words.intersection(text_words))
+                scored_chunks.append((score, text))
+            
+            # Sort by score descending, take top 3
+            scored_chunks.sort(key=lambda x: x[0], reverse=True)
+            selected_texts = [x[1] for x in scored_chunks[:3]]
+            return "\n---\n".join(selected_texts)
+        except Exception as e:
+            print(f"Error reading KB: {e}")
+            return ""
+
     def _format_pipeline_results(self, pipeline_results: dict) -> str:
         if not pipeline_results: return "No real-time data."
             
@@ -117,8 +150,9 @@ class ChatbotService:
             
         return "\n".join(context)
 
-    def _build_system_prompt(self, pipeline_results: dict) -> str:
+    def _build_system_prompt(self, pipeline_results: dict, user_query: str = "") -> str:
         historical = self._get_historical_context()
+        kb_context = self._get_knowledge_base_context(user_query)
         realtime = self._format_pipeline_results(pipeline_results)
         
         # Try to load custom prompt if exists, else use strict fallback
@@ -128,12 +162,16 @@ class ChatbotService:
 
 CRITICAL INSTRUCTIONS:
 1. STRICT CONTEXT BOUNDARY: You must NEVER answer questions outside the scope of agriculture, crop science, weather patterns, and the provided data. If a user asks an out-of-context question (e.g., programming, politics, or unrelated topics), politely decline and state you only answer agriculture-related queries.
-2. USE PROVIDED DATA: Base your answers heavily on the provided Historical Context and Real-Time Pipeline Results. Provide probable insights from the PKL data when queried.
-3. WEATHER & CYCLONES: Always factor in real-time or historical extreme weather (cyclones, floods, droughts, high winds) if relevant. Emphasize how these events impact crop yield, pesticide drift, and fertilizer leaching. Do not invent weather data outside of what is logically probable for the region.
+2. USE PROVIDED DATA: Base your answers heavily on the Historical Context, Real-Time Results, and the Knowledge Base provided below. Provide probable insights from the PKL data when queried.
+3. PADDY KNOWLEDGE FALLBACK: If the user asks a question specifically about Paddy (Rice) and the answer is NOT found in the provided Historical Data or Knowledge Base, you are ALLOWED to generate an output based on your own general agricultural knowledge, BUT ONLY for Paddy-related queries.
+4. WEATHER & CYCLONES: Always factor in real-time or historical extreme weather (cyclones, floods, droughts, high winds) if relevant. Emphasize how these events impact crop yield, pesticide drift, and fertilizer leaching. Do not invent weather data outside of what is logically probable for the region.
 
 ---
 HISTORICAL DATA CONTEXT (From PKL):
 {context}
+
+RELEVANT KNOWLEDGE BASE EXTRACT:
+{kb_context}
 
 REAL-TIME PIPELINE RESULTS:
 {pipeline_context}
@@ -145,9 +183,9 @@ Provide clear, concise, and scientifically accurate agronomic recommendations ba
         
         # Ensure fallback if template string formatting fails
         try:
-            return template.format(context=historical, pipeline_context=realtime)
+            return template.format(context=historical, kb_context=kb_context, pipeline_context=realtime)
         except Exception:
-            return DEFAULT_PROMPT.format(context=historical, pipeline_context=realtime)
+            return DEFAULT_PROMPT.format(context=historical, kb_context=kb_context, pipeline_context=realtime)
 
     async def generate_initial_insight(self, pipeline_results: dict) -> str:
         """Generates contextual insight, using cache if identical results provided."""
@@ -157,8 +195,8 @@ Provide clear, concise, and scientifically accurate agronomic recommendations ba
 
         if not self.client: return "AI Chatbot unavailable."
             
-        system_prompt = self._build_system_prompt(pipeline_results)
         user_msg = "Provide a concise, actionable agronomic recommendation based on these results."
+        system_prompt = self._build_system_prompt(pipeline_results, user_query=user_msg)
 
         try:
             response = await self.client.chat.completions.create(
@@ -176,7 +214,14 @@ Provide clear, concise, and scientifically accurate agronomic recommendations ba
     async def chat(self, user_messages: list, pipeline_results: dict = None) -> str:
         if not self.client: return "AI Chatbot offline."
         
-        system_prompt = self._build_system_prompt(pipeline_results or {})
+        # Extract the latest user query to filter KB
+        latest_query = ""
+        for msg in reversed(user_messages):
+            if msg.get("role") == "user":
+                latest_query = msg.get("content", "")
+                break
+                
+        system_prompt = self._build_system_prompt(pipeline_results or {}, user_query=latest_query)
         messages = [{"role": "system", "content": system_prompt}] + user_messages
         
         try:
