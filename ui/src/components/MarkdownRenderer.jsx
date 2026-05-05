@@ -98,7 +98,7 @@ const MarkdownRenderer = ({ content, animate = false }) => {
     const parts = text.split(/(\*\*.*?\*\*)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="font-bold text-slate-900 dark:text-slate-100">{part.slice(2, -2)}</strong>;
+        return <strong key={i} className="font-bold text-inherit">{part.slice(2, -2)}</strong>;
       }
       return part;
     });
@@ -114,7 +114,7 @@ const MarkdownRenderer = ({ content, animate = false }) => {
             return (
               <div key={i} className="flex gap-3 pl-1 mb-1">
                 <span className="text-primary font-bold min-w-[12px]">{block.prefix || "•"}</span>
-                <span className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+                <span className="text-[13px] leading-relaxed text-inherit">
                   {formatText(block.content)}
                 </span>
               </div>
@@ -136,7 +136,7 @@ const MarkdownRenderer = ({ content, animate = false }) => {
                     {block.data.rows.map((row, j) => (
                       <tr key={j} className="border-b border-slate-100 dark:border-slate-800/50 last:border-none hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                         {row.map((cell, k) => (
-                          <td key={k} className="p-3 text-slate-700 dark:text-slate-300">{cell}</td>
+                          <td key={k} className="p-3 text-inherit">{cell}</td>
                         ))}
                       </tr>
                     ))}
@@ -147,7 +147,7 @@ const MarkdownRenderer = ({ content, animate = false }) => {
           }
 
           return (
-            <p key={i} className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+            <p key={i} className="text-[13px] leading-relaxed text-inherit">
               {formatText(block.content)}
             </p>
           );

@@ -60,7 +60,7 @@ const ChatbotDrawer = ({ isOpen, onClose, messages, isLoading, onSendMessage }) 
               <input 
                 type="text" 
                 placeholder="Ask about Aman, Boro, fertilizers..." 
-                className="w-full pl-4 pr-12 py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 border-none focus:ring-2 focus:ring-primary/20 text-sm transition-all"
+                className="w-full pl-4 pr-12 py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 border-none focus:ring-2 focus:ring-primary/20 text-sm transition-all text-slate-900 dark:text-slate-100"
                 disabled={isLoading}
                 onKeyDown={(e) => {
                   if(e.key === 'Enter' && e.target.value.trim() && !isLoading) {
