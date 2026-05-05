@@ -1,6 +1,7 @@
 """Weather service for fetching real-time data and providing agricultural insights."""
 import os
 import datetime
+import json
 from collections import defaultdict
 import requests
 
@@ -8,11 +9,23 @@ class WeatherService:
     def __init__(self):
         self.api_key = os.getenv("OPENWEATHER_API_KEY")
         self.base_url = "https://api.openweathermap.org/data/2.5/forecast"
+        self.insights_data = self._load_agrochemical_insights()
         
-    def get_forecast(self, lat: float, lon: float) -> dict:
+    def _load_agrochemical_insights(self) -> dict:
+        """Load data-driven thresholds from the analysis module."""
+        try:
+            insights_path = os.path.join(os.path.dirname(__file__), "analysis", "agrochemical_insights.json")
+            if os.path.exists(insights_path):
+                with open(insights_path, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"[Warning] Could not load agrochemical insights: {e}")
+        return {}
+        
+    def get_forecast(self, lat: float, lon: float, crop_condition: str = None) -> dict:
         """Fetches 5-7 day forecast from OpenWeather API or returns mock data if key is missing."""
         if not self.api_key:
-            return self._get_mock_data(lat, lon)
+            return self._get_mock_data(lat, lon, crop_condition)
             
         try:
             # We use the 5-day / 3-hour forecast API as it's universally available on free tiers
@@ -26,18 +39,18 @@ class WeatherService:
             response = requests.get(self.base_url, params=params, timeout=10)
             
             if response.status_code == 200:
-                return self._parse_forecast_data(response.json())
+                return self._parse_forecast_data(response.json(), crop_condition)
             elif response.status_code == 401:
                 print(f"[Warning] OpenWeather API Key invalid or unauthorized. Using mock data.")
-                return self._get_mock_data(lat, lon)
+                return self._get_mock_data(lat, lon, crop_condition)
             else:
                 response.raise_for_status()
                 
         except Exception as e:
             print(f"[Error] Failed to fetch weather data: {e}. Using mock data.")
-            return self._get_mock_data(lat, lon)
+            return self._get_mock_data(lat, lon, crop_condition)
 
-    def _parse_forecast_data(self, data: dict) -> dict:
+    def _parse_forecast_data(self, data: dict, crop_condition: str = None) -> dict:
         """Parses the 3-hour interval data into daily aggregates and derives insights."""
         daily_data = defaultdict(lambda: {
             "temp_max": -999,
@@ -112,7 +125,7 @@ class WeatherService:
             })
             
         # Generate Agricultural Insights based on the upcoming 48 hours (first 2 days)
-        insights = self._generate_spraying_insights(forecast_list[:2])
+        insights = self._generate_spraying_insights(forecast_list[:2], crop_condition)
 
         return {
             "success": True,
@@ -137,7 +150,7 @@ class WeatherService:
         else:
             return "partly_cloudy_day"
 
-    def _generate_spraying_insights(self, next_few_days: list) -> dict:
+    def _generate_spraying_insights(self, next_few_days: list, crop_condition: str = None) -> dict:
         """Analyze upcoming weather to determine if spraying pesticides/fertilizers is safe."""
         if not next_few_days:
             return {"status": "unsafe", "title": "Avoid Spraying", "message": "Weather data unavailable.", "actionable": "Check sensors or local reports before spraying."}
@@ -151,31 +164,48 @@ class WeatherService:
         
         is_rainy = "rain" in condition or "thunderstorm" in condition
         
+        # Load data-driven thresholds or fallback to defaults
+        thresholds = self.insights_data.get("thresholds", {})
+        
+        # Since annual mean windspeed from data was ~2 m/s, we convert to realistic daily km/h scale
+        data_wind_unsafe = thresholds.get("windspeed", {}).get("unsafe", 2.0)
+        unsafe_wind_threshold = data_wind_unsafe * 3.6 * 2 if data_wind_unsafe < 5 else 15
+        
+        data_temp_unsafe = thresholds.get("temperature", {}).get("unsafe", 35)
+        unsafe_temp_threshold = max(data_temp_unsafe, 30) # at least 30C
+        
+        # Adjust recommendation based on crop condition
+        condition_context = ""
+        action_prefix = "Delay application"
+        if crop_condition and crop_condition.lower() not in ["healthy", "normal"]:
+            condition_context = f" considering the detection of {crop_condition}"
+            action_prefix = f"{crop_condition} requires attention. However, delay application"
+        
         # Rule 1: Unsafe conditions
-        if wind_kmh > 15:
+        if wind_kmh > unsafe_wind_threshold:
             return {
                 "status": "unsafe",
                 "title": "Avoid Spraying",
-                "message": f"High wind speeds ({wind_kmh} km/h) pose a severe drift risk. Do not spray today.",
-                "actionable": "Wait for a calmer day to prevent chemicals from drifting to unintended areas."
+                "message": f"Data indicates high wind speeds ({wind_kmh} km/h) reduce efficiency and pose drift risk{condition_context}.",
+                "actionable": f"{action_prefix} until winds are calmer."
             }
         if pop >= 30 or is_rainy:
             return {
                 "status": "unsafe",
                 "title": "Avoid Spraying",
-                "message": f"High probability of rain ({pop}%). Spraying today will likely result in chemicals washing off.",
-                "actionable": "Delay application until there's a clear 24-hour dry window."
+                "message": f"High probability of rain ({pop}%). Data shows rainfall causes nutrient/chemical leaching{condition_context}.",
+                "actionable": f"{action_prefix} until there's a clear 24-hour dry window."
             }
-        if temp > 35:
+        if temp > unsafe_temp_threshold:
             return {
                 "status": "unsafe",
                 "title": "Avoid Spraying",
-                "message": f"Extreme heat ({temp}°C) will cause rapid evaporation of spray droplets.",
+                "message": f"Extreme heat ({temp}°C) affects agrochemical uptake and causes evaporation{condition_context}.",
                 "actionable": "If you must spray, do so only during early morning or late evening."
             }
             
         # Rule 2: Moderate conditions
-        if 12 <= wind_kmh <= 15:
+        if wind_kmh > unsafe_wind_threshold * 0.75:
             return {
                 "status": "moderate",
                 "title": "Moderate Spraying Conditions",
@@ -198,14 +228,18 @@ class WeatherService:
             }
             
         # Rule 3: Optimal conditions
+        actionable_optimal = "Best time window: 6 AM to 10 AM or late afternoon. Proceed with standard application."
+        if crop_condition and crop_condition.lower() not in ["healthy", "normal"]:
+             actionable_optimal = f"Optimal conditions for treating {crop_condition}. Proceed with recommended fungicide/pesticide application."
+             
         return {
             "status": "optimal",
             "title": "Optimal Spraying Conditions",
-            "message": f"Low wind speed ({wind_kmh} km/h), no rainfall expected, and moderate humidity ({humidity}%) make it ideal for spraying.",
-            "actionable": "Best time window: 6 AM to 10 AM or late afternoon. Proceed with standard application."
+            "message": f"Data-backed optimal conditions: Low wind ({wind_kmh} km/h), no rain, moderate temperature ({temp}°C).",
+            "actionable": actionable_optimal
         }
 
-    def _get_mock_data(self, lat: float, lon: float) -> dict:
+    def _get_mock_data(self, lat: float, lon: float, crop_condition: str = None) -> dict:
         """Returns realistic mock data when API key is missing or invalid."""
         base_date = datetime.datetime.now()
         
@@ -238,6 +272,6 @@ class WeatherService:
         return {
             "success": True,
             "forecast": mock_forecast,
-            "insights": self._generate_spraying_insights(mock_forecast[:2]),
+            "insights": self._generate_spraying_insights(mock_forecast[:2], crop_condition),
             "is_mock": True
         }

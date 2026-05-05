@@ -1,0 +1,38 @@
+{
+    "correlations": {
+        "temp_mean_annual": {
+            "temp_mean_annual": 1.0,
+            "rainfall_annual_mm": -0.5009015316936622,
+            "windspeed_mean": 0.5947411620615206,
+            "yield_kg_per_ha": -0.4612908178309739
+        },
+        "rainfall_annual_mm": {
+            "temp_mean_annual": -0.5009015316936622,
+            "rainfall_annual_mm": 1.0,
+            "windspeed_mean": -0.6688796748127867,
+            "yield_kg_per_ha": 0.7201286389029674
+        },
+        "windspeed_mean": {
+            "temp_mean_annual": 0.5947411620615206,
+            "rainfall_annual_mm": -0.6688796748127867,
+            "windspeed_mean": 1.0,
+            "yield_kg_per_ha": -0.6680268125434932
+        },
+        "yield_kg_per_ha": {
+            "temp_mean_annual": -0.4612908178309739,
+            "rainfall_annual_mm": 0.7201286389029674,
+            "windspeed_mean": -0.6680268125434932,
+            "yield_kg_per_ha": 1.0
+        }
+    },
+    "thresholds": {
+        "windspeed": {
+            "moderate": 1.94,
+            "unsafe": 2.08
+        },
+        "temperature": {
+            "unsafe": 25.51
+        },
+        "rainfall_annual_unsafe": 40326.74
+    }
+}
