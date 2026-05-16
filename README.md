@@ -1,4 +1,4 @@
-# 🌾 Rice AI System
+# 🌾 Rice AI System 
 
 A professional, production-grade AI platform for rice crop analysis. It combines **segmentation**, **disease detection**, and **variety classification** into a high-performance intelligent pipeline.
 
